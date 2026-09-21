@@ -52,7 +52,9 @@ def _features(board: list[list[int]]) -> tuple[int, int, int]:
     return sum(heights), holes, bumpiness
 
 
-def _place(board: list[list[int]], cells: tuple[tuple[int, int], ...], col: int) -> list[list[int]] | None:
+def _place(
+    board: list[list[int]], cells: tuple[tuple[int, int], ...], col: int
+) -> list[list[int]] | None:
     """Drop a piece into a column and return the resulting board, or None."""
     height, width = len(board), len(board[0])
 

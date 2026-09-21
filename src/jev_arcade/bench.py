@@ -132,7 +132,10 @@ def results_table(results: dict[str, list[Episode]], max_turns: int) -> str:
         cells = []
         for kind in kinds:
             runs = results.get(f"{game}/{kind}")
-            cells.append("n/a" if not runs else f"{statistics.mean(r.final_score for r in runs):.0f}")
+            if not runs:
+                cells.append("n/a")
+            else:
+                cells.append(f"{statistics.mean(r.final_score for r in runs):.0f}")
         jev_runs = results.get(f"{game}/jev")
         fallback = (
             "n/a" if not jev_runs
@@ -162,7 +165,13 @@ def confidence_report(results: dict[str, list[Episode]]) -> str:
                 buckets[label].append(move.confidence)
     if not total:
         return ""
-    lines = ["", "Jev confidence distribution:", "", "| bucket | moves | share |", "| --- | --- | --- |"]
+    lines = [
+        "",
+        "Jev confidence distribution:",
+        "",
+        "| bucket | moves | share |",
+        "| --- | --- | --- |",
+    ]
     for label, values in buckets.items():
         lines.append(f"| {label} | {len(values)} | {len(values) / total * 100:.0f}% |")
     return "\n".join(lines)
