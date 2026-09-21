@@ -1,4 +1,4 @@
-# jev-arcade — Design
+# jev-arcade Design
 
 **Date:** 2026-09-21
 **Status:** Approved (scope + naming), pending spec review
@@ -8,12 +8,12 @@
 
 TypeSafe's **Jev** is a *System One* model: it does not generate text. It accepts
 application state plus typed questions and returns typed answers with calibrated
-probabilities — `Choice` (one of up to 255 options), `Score` (position on 2–10
-ordered levels), `Noul` (probability that a statement is true).
+probabilities. `Choice` picks one of up to 255 options, `Score` places the input on
+2 to 10 ordered levels, and `Noul` returns the probability that a statement is true.
 
 Game playing is the canonical System One task: perceive a board, pick a move,
 repeat, under time pressure. Yet every published "AI plays games" harness targets
-*System Two* models — LLMs that reason in text. lmgame-Bench (ICLR 2026) evaluated
+*System Two* models, meaning LLMs that reason in text. lmgame-Bench (ICLR 2026) evaluated
 LLMs on Tetris, Sokoban, 2048 and Super Mario and found that **on Tetris and Candy
 Crush their scores sit close to random play**.
 
@@ -42,13 +42,14 @@ is its reported confidence calibrated against whether its move was actually good
 Three findings from the spike drove the design.
 
 **Latency permits real play.** A live call from Istanbul returned in **515 ms**
-wall-clock (TypeSafe documents 10–15 ms compute; the remainder is network). An LLM
-harness must fight 1–3 s per move; Jev does not. Games still step turn-by-turn, but
+wall clock. TypeSafe documents 10 to 15 ms of that as compute and the remainder is
+network. An LLM harness must fight 1 to 3 seconds per move. Games still step turn by
+turn, but
 an episode completes in minutes rather than hours.
 
 **Illegal moves are structurally impossible.** The move set *is* the `criteria` map
 of a `Choice` question. There is no prompt to misparse and no free text to
-hallucinate — Jev can only return a key we supplied. This removes the single
+hallucinate, so Jev can only return a key we supplied. This removes the single
 largest source of failure in LLM game harnesses.
 
 **Confidence is a separate, usable axis.** `Choice` and `Score` return `confidence`
@@ -64,7 +65,7 @@ A hand-built Tetris state with a 4-deep well at column 6 was sent to
 
 > **Caveat, recorded deliberately:** that state included a `note` field that named
 > column 6 as correct. It validates the transport, not the model's play. The
-> harness must never place hints, evaluations or suggestions in state — only
+> harness must never place hints, evaluations or suggestions in state, only
 > observable board facts. This is a correctness requirement, not a style note, and
 > is enforced by a test.
 
@@ -125,7 +126,7 @@ silently inflating Jev's score.
 ## 5. How Jev plays a move
 
 One HTTP request per move, batching every question over the same state
-(TypeSafe's speculative fan-out pattern — parallel questions are documented as
+(TypeSafe's speculative fan-out pattern, where parallel questions are documented as
 substantially cheaper and faster than sequential ones):
 
 ```json
@@ -141,7 +142,7 @@ substantially cheaper and faster than sequential ones):
 ```
 
 `criteria` allows up to 255 options. Tetris has at most 4 rotations x 10 columns =
-40 placements, Snake 4, 2048 4 — all comfortably inside the limit, so the full
+40 placements, Snake 4 and 2048 4, all comfortably inside the limit, so the full
 legal move set is always offered and no pruning heuristic is needed.
 
 ### Confidence-gated fallback
@@ -154,16 +155,28 @@ else:                                  play heuristic's move  (source="heuristic
 The threshold is a config value, not a constant, and is evaluated against recorded
 episodes rather than guessed. Per TypeSafe's guidance, confidence measures
 distribution concentration and not correctness, so a low value where several moves
-are equally fine is not a failure — the analysis must separate "uncertain because
+are equally fine is not a failure. The analysis must separate "uncertain because
 ambiguous" from "uncertain because confused".
 
 ## 6. Games
 
 | Game | Engine | Reason |
 | --- | --- | --- |
-| Tetris | `tetris-gymnasium` (PyPI), wrapped in a placement-level adapter | Reuse before building. Gymnasium-native, board exposed as an array, citable in a write-up. The adapter converts `(rotation, column)` into the keypress sequence the env expects, so Jev decides at placement level rather than per-keypress. |
+| Tetris | Own implementation, pure Python | See the revision note below. |
 | Snake | Own implementation, ~120 lines | No package justifies a dependency here. Cleanest possible `Choice`: exactly four options. |
-| 2048 | Own implementation, ~150 lines | Trivial to implement, and it appears in lmgame-Bench — giving one directly comparable LLM-vs-System-One number. |
+| 2048 | Own implementation, ~150 lines | Trivial to implement, and it appears in lmgame-Bench, giving one directly comparable number between an LLM and a System One model. |
+
+### Revision 2026-09-21: Tetris engine
+
+The reuse before building rule pointed at `tetris-gymnasium`. Implementation checked its
+dependency tree first and found jax, chex and opencv-python, roughly 200MB, required to
+model a 10x20 integer grid. It also exposes keypress level actions while this project
+needs placement level ones, so the placement simulation would have had to be written
+regardless.
+
+Decision: all three engines are written in pure Python. The repo now has zero runtime
+dependencies and can be cloned and run with nothing but python3, which matters more for a
+public demo than a citable environment does.
 
 ## 7. Error handling
 
@@ -181,14 +194,14 @@ and says so in the record.
 
 TDD. Coverage target 80%.
 
-- **Games** — pure and seeded; identical seed yields an identical episode. Line
+- **Games.** Pure and seeded, so an identical seed yields an identical episode. Line
   clears, collisions, merges, game-over conditions tested directly.
-- **Harness** — driven by `MockPlayer`; no network involved.
-- **Jev adapter** — request construction and response parsing tested against a
+- **Harness.** Driven by `MockPlayer`, with no network involved.
+- **Jev adapter.** Request construction and response parsing tested against a
   recorded fixture captured from the live API.
-- **State hygiene** — a test asserts no serialized state contains hint-like keys
+- **State hygiene.** A test asserts no serialized state contains hint like keys
   (`note`, `hint`, `suggestion`, `best`, `answer`), guarding the spike's mistake.
-- **Live smoke test** — one, skipped unless `TYPESAFE_API_KEY` is set.
+- **Live smoke test.** One, skipped unless `TYPESAFE_API_KEY` is set.
 
 ## 9. Reproducibility
 
@@ -231,10 +244,10 @@ Recorded now, resolved with data rather than argument:
 
 ## 13. References
 
-- TypeSafe API reference — https://docs.typesafe.ai/api
-- Speculative fan-out — https://docs.typesafe.ai/patterns/fan-out
-- Confidence-gated routing — https://docs.typesafe.ai/patterns/confidence-routing
-- Confidence — https://docs.typesafe.ai/confidence
-- lmgame-Bench, arXiv:2505.15146 — https://arxiv.org/abs/2505.15146
-- Tetris-Gymnasium — https://github.com/Max-We/Tetris-Gymnasium
-- PyBoy (deferred) — https://github.com/Baekalfen/PyBoy
+- TypeSafe API reference: https://docs.typesafe.ai/api
+- Speculative fan-out: https://docs.typesafe.ai/patterns/fan-out
+- Confidence-gated routing: https://docs.typesafe.ai/patterns/confidence-routing
+- Confidence: https://docs.typesafe.ai/confidence
+- lmgame-Bench, arXiv:2505.15146: https://arxiv.org/abs/2505.15146
+- Tetris-Gymnasium: https://github.com/Max-We/Tetris-Gymnasium
+- PyBoy (deferred): https://github.com/Baekalfen/PyBoy

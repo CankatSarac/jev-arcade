@@ -2,131 +2,184 @@
 
 **Can a System One model play arcade games?**
 
-[TypeSafe's Jev](https://docs.typesafe.ai/introduction) is a *System One* model. It
-doesn't generate text — you hand it application state and typed questions, and it
-returns typed answers with calibrated probabilities. This repo points that at
-Tetris, Snake and 2048, and lets it play by itself.
+[TypeSafe's Jev](https://docs.typesafe.ai/introduction) is a *System One* model. It does
+not generate text. You hand it application state plus typed questions, and it returns
+typed answers with calibrated probabilities. This repo points that at Tetris, Snake and
+2048, and lets it play by itself.
 
-> **Status: design complete, implementation in progress.**
-> The [design spec](docs/superpowers/specs/2026-09-21-jev-arcade-design.md) is
-> written and the API path is verified against the live service. Game and player
-> code is not written yet. Nothing below is claimed to run until this notice
-> changes.
-
----
+```
+turn 17  move left  by jev  confidence 0.52  509 ms
+```
 
 ## Why this is interesting
 
-Every published "AI plays games" harness targets *System Two* models — LLMs that
-reason in text. [lmgame-Bench](https://arxiv.org/abs/2505.15146) (ICLR 2026) ran
-LLMs on Tetris, Sokoban, 2048 and Super Mario and found that **on Tetris their
-scores sit close to random play**.
+Every published "AI plays games" harness targets *System Two* models, meaning LLMs that
+reason in text. [lmgame-Bench](https://arxiv.org/abs/2505.15146) (ICLR 2026) ran LLMs on
+Tetris, Sokoban, 2048 and Super Mario and found that on Tetris their scores sit close to
+random play.
 
-Nobody has measured a System One model on the same task — even though picking a
-move from a board is about as System One as a task gets.
+Nobody has measured a System One model on the same task, even though picking a move from
+a board is about as System One as a task gets.
 
-Two properties make Jev structurally different from an LLM here:
+Two properties make Jev structurally different from an LLM here.
 
-**Illegal moves are impossible.** The move set *is* the `criteria` map of a
-`Choice` question. There's no prompt to misparse and no free text to hallucinate;
-Jev can only return a key we supplied. That removes the largest failure source in
-LLM game harnesses.
+**Illegal moves are impossible.** The move set *is* the `criteria` map of a `Choice`
+question. There is no prompt to misparse and no free text to hallucinate, so Jev can only
+return a key the game supplied. That removes the largest failure source in LLM game
+harnesses.
 
-**It's fast enough to actually play.** A live call from Istanbul returned in
-**515 ms** wall-clock (TypeSafe documents 10–15 ms compute; the rest is network).
-An LLM harness fights 1–3 s per move.
+**It is fast enough to actually play.** Measured round trip from Istanbul is about 500 ms,
+of which TypeSafe documents 10 to 15 ms as compute and the rest is network. An LLM harness
+fights 1 to 3 seconds per move.
 
-## The question being measured
+## What is measured
 
-Two numbers, not one:
+Two numbers, not one.
 
-1. **Does it play well?** Jev vs. a random baseline vs. a strong heuristic, over
-   seeded episodes.
+1. **Does it play well?** Jev against a uniform random baseline and against a strong
+   heuristic, over seeded episodes.
 2. **Is its confidence calibrated?** Jev returns `confidence` separately from
-   `probabilities`. Bucket its moves by confidence and check whether accuracy
-   rises monotonically. That plot is the real claim.
+   `probabilities`. Bucket its moves by confidence and check whether quality rises with
+   it. That is the real claim.
+
+## Results
+
+<!--RESULTS-->
 
 ## How a move works
 
-One HTTP request per move, batching every question over the same state — TypeSafe's
-[speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) pattern:
+One HTTP request per move, batching every question over the same state. This is
+TypeSafe's [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) pattern.
 
 ```json
 {
   "model": "jev-latest",
-  "state": { "board": ["..........", "####...###"], "piece": "I", "heights": [4, 4] },
+  "state": { "board": ["..........", "####...###"], "current_piece": "I", "column_heights": [4, 4] },
   "questions": {
-    "move":    { "type": "choice", "criteria": { "r0c6": "rotation 0, column 6" } },
-    "danger":  { "type": "noul",   "instructions": "The stack is about to top out." },
-    "quality": { "type": "score",  "criteria": ["Creates holes", "Neutral", "Clears lines"] }
+    "move":   { "type": "choice", "criteria": { "r0c6": "rotation 0, column 6" } },
+    "danger": { "type": "noul",   "instructions": "The stack has grown close to the top." },
+    "health": { "type": "score",  "criteria": ["Low and flat", "Moderate", "High and badly holed"] }
   }
 }
 ```
 
-Then [confidence-gated routing](https://docs.typesafe.ai/patterns/confidence-routing):
-if confidence clears the threshold, play Jev's move; otherwise fall back to the
-heuristic — and record which one played, so fallbacks never silently inflate Jev's score.
+Questions inside one request cannot see each other's answers, so the companion questions
+ask about the board as it stands rather than about the move that was chosen. They are
+telemetry, not inputs to the decision.
+
+Then [confidence-gated routing](https://docs.typesafe.ai/patterns/confidence-routing). If
+confidence clears the threshold, play Jev's move. Otherwise fall back to the heuristic,
+and record which one played, so fallbacks never silently inflate Jev's score.
+
+## Fairness rules
+
+A benchmark that leaks the answer into the question measures nothing. Two rules are
+enforced by tests rather than by good intentions.
+
+**No hints in state.** No serialized field may be named `note`, `hint`, `suggestion`,
+`best`, `advice` or `answer`. Perception aids such as `column_heights` are allowed because
+they are directly readable off the board. Evaluations of the position are not.
+
+**No evaluative move labels.** A label may say `rotation 0, columns 3 to 5`. It may not
+say which placement is good.
+
+These exist because the first exploratory call during design *did* include a hint, and Jev
+answered it at confidence 0.99. That proved the transport worked and measured nothing.
 
 ## Architecture
 
-Dependencies point one way. Games know nothing about Jev; players know nothing
-about rendering.
+Dependencies point one way. Games know nothing about Jev. Players know nothing about
+rendering.
 
 ```
 src/jev_arcade/
-  games/      Game protocol: reset · step · legal_moves · to_state · score
-  players/    random · heuristic · jev · mock
-  harness/    runner · recorder (JSONL replays) · render (terminal)
-  bench.py    N seeded episodes × M players → results table
+  types.py      frozen value types: Decision, MoveRecord, Episode
+  games/        tetris.py  snake.py  twenty48.py
+  players/      random_player  heuristic_player  jev_player  jev_client  mock_player
+  harness/      runner  recorder (JSONL replays)  render (ANSI terminal)
+  bench.py      watch and bench commands
 ```
 
-Games are pure and deterministic given a seed, so the whole suite tests without
-touching the network.
+Games are pure and deterministic given a seed, so the whole suite runs without touching a
+network. The Jev tests inject a fake opener.
 
 ## Games
 
-| Game | Engine | Why |
+| Game | Engine | Notes |
 | --- | --- | --- |
-| Tetris | [`tetris-gymnasium`](https://github.com/Max-We/Tetris-Gymnasium) + placement adapter | Reuse before building. Jev decides at placement level, not per-keypress. |
-| Snake | Own, ~120 lines | No package justifies a dependency. Cleanest possible `Choice` — 4 options. |
-| 2048 | Own, ~150 lines | Trivial, and in lmgame-Bench — one directly comparable number. |
+| Tetris | own, pure Python | Placement level moves such as `r1c4`, not keypresses, so a player decides once per piece. Rotations are generated by rotating the base shape, not from a hand written table. |
+| Snake | own, pure Python | The cleanest possible `Choice`, at most four options. Reversing into the neck is excluded from the legal set. |
+| 2048 | own, pure Python | Also in lmgame-Bench, which gives one directly comparable number. A move is legal only if it changes the board. |
 
-**No ROMs.** Real Game Boy emulation via [PyBoy](https://github.com/Baekalfen/PyBoy)
-works and was considered, but commercial ROMs are copyrighted and this repo is
-public. It's deferred behind the `Game` protocol, which PyBoy can satisfy later
-without changing anything else.
+The design originally called for [`tetris-gymnasium`](https://github.com/Max-We/Tetris-Gymnasium)
+under a reuse before building rule. It was dropped after checking its dependency tree: it
+pulls jax, chex and opencv-python, roughly 200MB, to model a 10x20 integer grid, and it
+exposes keypress level actions when this project needs placement level ones. The placement
+simulation would have had to be written anyway.
+
+**No ROMs.** Real Game Boy emulation via [PyBoy](https://github.com/Baekalfen/PyBoy) works
+and was considered, but commercial ROMs are copyrighted and this repo is public. It is
+deferred behind the `Game` protocol, which PyBoy can satisfy later without changing
+anything else.
 
 ## Setup
 
+**Runtime dependencies: none.** Python 3.11 or newer and the standard library. The HTTP
+client is `urllib`. Clone and run.
+
 ```bash
-uv sync
+git clone https://github.com/CankatSarac/jev-arcade
+cd jev-arcade
 cp .env.example .env     # then paste your key into .env
 ```
 
-Get a key at [console.typesafe.ai/keys](https://console.typesafe.ai/keys).
-The key is read from `TYPESAFE_API_KEY` and nowhere else — never a file in the
-repo, never a CLI argument. `.env` is gitignored.
+Get a key at [console.typesafe.ai/keys](https://console.typesafe.ai/keys). The key is read
+from `TYPESAFE_API_KEY` and nowhere else. Never a file in the repo, never a CLI argument.
+`.env` is gitignored.
+
+## Usage
+
+Watch a game being played, one frame per move:
 
 ```bash
-uv run python -m jev_arcade.bench --game tetris --player jev --episodes 10   # planned
+PYTHONPATH=src python3 -m jev_arcade watch --game tetris --player heuristic
+PYTHONPATH=src python3 -m jev_arcade watch --game 2048 --player jev --max-turns 40
 ```
 
-## Results
+Run the benchmark:
 
-Populated once the implementation lands.
+```bash
+PYTHONPATH=src python3 -m jev_arcade bench --game all --player all --episodes 3 --max-turns 60
+```
 
-| Game | Random | Heuristic | Jev | Jev fallback rate |
-| --- | --- | --- | --- | --- |
-| Tetris | — | — | — | — |
-| Snake | — | — | — | — |
-| 2048 | — | — | — | — |
+Make Jev defer to the heuristic whenever it is unsure:
+
+```bash
+PYTHONPATH=src python3 -m jev_arcade bench --game tetris --player jev --threshold 0.5
+```
+
+Results land in `results/` and full replays in `replays/`, as JSONL, so a run can be
+re-analysed without spending a second round of API calls.
+
+**Cost note.** Jev spends one API call per turn. The `--max-turns` flag is a budget as much
+as a rule, which is why scores are reported as score within N turns rather than final
+score. Random and heuristic players are free and instant.
+
+## Tests
+
+```bash
+python3 -m pytest tests/ -q
+```
+
+No network access is required. Every test either uses a pure game engine or an injected
+fake HTTP opener. One live smoke test is skipped unless `TYPESAFE_API_KEY` is set.
 
 ## References
 
-- [TypeSafe API reference](https://docs.typesafe.ai/api) · [Confidence](https://docs.typesafe.ai/confidence) · [Patterns](https://docs.typesafe.ai/patterns)
-- [lmgame-Bench: How Good are LLMs at Playing Games?](https://arxiv.org/abs/2505.15146) (arXiv:2505.15146)
-- [GamingAgent](https://github.com/lmgame-org/GamingAgent) — the LLM-side equivalent
+* [TypeSafe API reference](https://docs.typesafe.ai/api), [Confidence](https://docs.typesafe.ai/confidence), [Patterns](https://docs.typesafe.ai/patterns)
+* [lmgame-Bench: How Good are LLMs at Playing Games?](https://arxiv.org/abs/2505.15146), arXiv:2505.15146
+* [GamingAgent](https://github.com/lmgame-org/GamingAgent), the LLM side equivalent
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
