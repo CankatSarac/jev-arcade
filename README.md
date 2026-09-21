@@ -45,8 +45,11 @@ Two numbers, not one.
 ## Results
 
 Three seeded episodes per cell, 60 turns per episode, run 2026-09-21 against
-`jev-1.13.0`. Confidence threshold 0, meaning every Jev answer was acted on and nothing
-fell back to the heuristic.
+`jev-1.13.0`.
+
+### Raw play, with every answer acted on
+
+Confidence threshold 0, so nothing fell back to the heuristic.
 
 | game | random | heuristic | jev | jev as share of heuristic |
 | --- | --- | --- | --- | --- |
@@ -55,32 +58,66 @@ fell back to the heuristic.
 | tetris | 0 | 2333 | 167 | 7% |
 
 **The pattern is not about game difficulty. It is about action space size and how far
-ahead you have to look.**
+ahead you have to look.** Snake and 2048 offer at most four moves and reward local
+reasoning, and there Jev lands close to a tuned heuristic. Tetris offers around 34
+placements per piece and rewards planning several pieces ahead, and there Jev falls a
+long way short. That is what a System One model should look like: fast intuitive
+judgement, not deliberate search.
 
-Snake and 2048 offer at most four moves and reward local reasoning, and there Jev lands
-close to a tuned heuristic. Tetris offers around 34 placements per piece and rewards
-planning several pieces ahead, and there Jev falls a long way short. That is what a System
-One model should look like: fast intuitive judgement, not deliberate search.
+Jev still clearly beats random on Tetris, scoring 167 against 0 and surviving a mean of
+36 pieces against 25. That is worth stating plainly, because lmgame-Bench found LLM
+scores on Tetris sitting close to random.
 
-**Jev clearly beats random on Tetris even so.** It scored 167 against random's 0, and
-survived a mean of 36 pieces against random's 25. That is worth stating plainly because
-lmgame-Bench found LLM scores on Tetris sitting close to random. A System One model does
-better than that published LLM baseline on the game LLMs fail at, at about 500 ms and a
-fraction of the cost per move.
+### Calibration: confidence carries real signal
 
-**Jev is usually unsure, and was acted on anyway.**
+Every Jev move re-simulated from its replay, then compared with what the heuristic would
+have chosen from the identical board. Chance agreement is one over the number of legal
+options. Turns with one legal move are excluded, because those never reached the API.
 
-| confidence bucket | moves | share |
-| --- | --- | --- |
-| 0.0 to 0.5 | 338 | 74% |
-| 0.5 to 0.8 | 58 | 13% |
-| 0.8 to 1.0 | 61 | 13% |
+| game | confidence | moves | agrees with heuristic | chance |
+| --- | --- | --- | --- | --- |
+| snake | 0.0 to 0.3 | 18 | 33% | 33% |
+| snake | 0.3 to 0.5 | 56 | 54% | 33% |
+| snake | 0.5 to 0.8 | 73 | 63% | 33% |
+| snake | 0.8 to 1.0 | 157 | **93%** | 33% |
+| 2048 | 0.0 to 0.3 | 61 | 16% | 28% |
+| 2048 | 0.3 to 0.5 | 99 | 19% | 26% |
+| 2048 | 0.5 to 0.8 | 42 | **57%** | 30% |
+| tetris | 0.0 to 0.3 | 101 | 19% | 8% |
+| tetris | 0.3 to 0.5 | 3 | 33% | 6% |
 
-Three quarters of answers came back below 0.5 confidence. Often that is correct rather
-than confused: on a near empty 2048 board every slide really is near equivalent, and
-TypeSafe documents that several acceptable alternatives will spread probability. Since the
-threshold was 0, these scores show Jev at its least selective. Running with
-`--threshold 0.5` so it defers when unsure is the obvious next experiment.
+Snake is the clean case. Agreement rises monotonically from exactly chance at low
+confidence to 93% at high confidence. The confidence number is doing real work.
+
+**Look at what is missing from the Tetris rows.** Out of 104 real decisions, 101 came
+back below 0.3 confidence, and not one cleared 0.5. Jev never gets confident about a
+Tetris move. It is not overconfident and wrong. It is correctly reporting that it does
+not know how to play this game.
+
+### Self-routing: one threshold sends each game to the right player
+
+The same benchmark at `--threshold 0.5`, so Jev defers to the heuristic whenever it is
+unsure.
+
+| game | jev at threshold 0 | jev at threshold 0.5 | heuristic | fallback rate |
+| --- | --- | --- | --- | --- |
+| snake | 70 | 73 | 80 | **25%** |
+| 2048 | 484 | 499 | 497 | **88%** |
+| tetris | 167 | 2333 | 2333 | **100%** |
+
+**The fallback rate tracks competence almost exactly, and nobody configured it.** One
+number, 0.5, applied to all three games. On Snake, where Jev genuinely plays well, it
+kept control of three quarters of its moves. On Tetris, where it cannot play, it handed
+over every single decision.
+
+That is [confidence-gated routing](https://docs.typesafe.ai/patterns/confidence-routing)
+behaving as documented: the answer tells you what, the confidence tells you whether to
+act. The engineering value is a system that degrades gracefully into a known good
+fallback on the tasks the model cannot do, without anyone having to know in advance which
+tasks those are.
+
+Be clear about what the Tetris 2333 is, though. At 100% fallback that is the heuristic's
+score, not Jev's. Jev contributed the decision to stay out of the way.
 
 ### What these numbers do not show
 
@@ -88,21 +125,26 @@ Stated plainly, because a benchmark that oversells itself is worth less than no 
 
 * **Three seeds per cell is a small sample.** Enough to see a 300x gap on Tetris, not
   enough to trust the 13 point gap on 2048.
-* **60 turns barely stretches 2048.** Random scores 447 and the heuristic 497, so the game
-  is only separating players by about 11% at this length. The Jev number there is weak
-  evidence either way.
+* **60 turns barely stretches 2048.** Random scores 447 and the heuristic 497, so the
+  game only separates players by about 11% at this length.
 * **The Tetris heuristic never died.** It hit the 60 turn cap every time, so 2333 is a
   floor on its skill, not a measurement of it.
-* **Calibration is not yet measured.** The confidence distribution is reported, but
-  whether accuracy actually rises with confidence needs the per move comparison against
-  the heuristic's choice. The replays in `replays/` hold everything needed for it.
+* **Agreement with the heuristic is a proxy, not truth.** It is the strongest reference
+  available and it sees the same state, but on 2048 the heuristic itself is only
+  marginally better than random, which makes agreement a weak signal for that game. The
+  Tetris consequence measure, holes created per move, needs no reference and is the
+  stronger of the two.
 
 Reproduce with:
 
 ```bash
 PYTHONPATH=src python3 -m jev_arcade bench --game all --player all --episodes 3 --max-turns 60
+PYTHONPATH=src python3 -m jev_arcade bench --game all --player jev --episodes 3 --threshold 0.5
+PYTHONPATH=src python3 -m jev_arcade analyse
 ```
 
+The analysis step costs nothing. Replays store the seed and move sequence, and the games
+are deterministic, so every episode re-simulates exactly.
 
 ## How a move works
 
@@ -216,8 +258,15 @@ Make Jev defer to the heuristic whenever it is unsure:
 PYTHONPATH=src python3 -m jev_arcade bench --game tetris --player jev --threshold 0.5
 ```
 
-Results land in `results/` and full replays in `replays/`, as JSONL, so a run can be
-re-analysed without spending a second round of API calls.
+Report on whether Jev's confidence carried signal:
+
+```bash
+PYTHONPATH=src python3 -m jev_arcade analyse
+```
+
+Results land in `results/` and full replays in `replays/`, as JSONL. The analysis reads
+those replays and re-simulates each episode from its seed, so it costs no API calls at
+all.
 
 **Cost note.** Jev spends one API call per turn. The `--max-turns` flag is a budget as much
 as a rule, which is why scores are reported as score within N turns rather than final
