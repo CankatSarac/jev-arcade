@@ -197,7 +197,9 @@ src/jev_arcade/
   games/        tetris.py  snake.py  twenty48.py
   players/      random_player  heuristic_player  jev_player  jev_client  mock_player
   harness/      runner  recorder (JSONL replays)  render (ANSI terminal)
-  bench.py      watch and bench commands
+  analysis.py   calibration report over replays, no API calls
+  web/          stdlib SSE server and the race viewer page
+  bench.py      watch, bench, analyse and serve commands
 ```
 
 Games are pure and deterministic given a seed, so the whole suite runs without touching a
@@ -237,7 +239,48 @@ Get a key at [console.typesafe.ai/keys](https://console.typesafe.ai/keys). The k
 from `TYPESAFE_API_KEY` and nowhere else. Never a file in the repo, never a CLI argument.
 `.env` is gitignored.
 
+## Watch it in the browser
+
+```bash
+PYTHONPATH=src python3 -m jev_arcade serve
+```
+
+Then open http://127.0.0.1:8765. Two boards run the same seed side by side, so both
+players get an identical starting position and an identical piece sequence. Pick the
+game, the two players, the seed, the turn cap and the confidence threshold, then press
+start.
+
+Under the Jev board you get its confidence bar and the probability it assigned to each
+of its top options, updating every move. It is the clearest view of the finding: on Snake
+the two boards track each other, and on Tetris you watch one stack fill with holes while
+the other stays flat.
+
+A real Tetris race, seed 0, reading off the stream:
+
+```
+t 0  JEV  r0c0 conf 0.40  holes  0  |  HEUR  r0c7  holes  0
+t 3  JEV  r0c0 conf 0.10  holes  8  |  HEUR  r0c2  holes  0
+t 5  JEV  r0c0 conf 0.06  holes 12  |  HEUR  r2c2  holes  0
+t11  JEV  r0c4 conf 0.07  holes 19  |  HEUR  r0c1  holes  2
+```
+
+Two things are visible there that the summary tables cannot show. Jev has a pronounced
+left column bias, playing `r0c0` seven times in twelve turns. And its confidence falls
+from 0.40 to under 0.07 as the board degrades, which is the calibration result happening
+live: it registers that the position is lost even though it cannot repair it.
+
+The server is the standard library, `http.server` streaming Server Sent Events. No web
+framework, because the zero dependency property is worth more than the convenience.
+
+**Security.** The server binds to `127.0.0.1` only, so nothing off this machine can reach
+it. The API key stays server side: the browser receives game state and model answers, and
+never talks to TypeSafe itself. Every query parameter is checked against a fixed whitelist
+and the numbers are clamped, so a crafted URL cannot start an unbounded run that spends
+API calls. Passing a different `--host` prints a warning, because this process holds your
+key.
+
 ## Usage
+
 
 Watch a game being played, one frame per move:
 

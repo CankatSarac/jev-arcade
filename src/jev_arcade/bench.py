@@ -1,5 +1,6 @@
 """Benchmark runner and live viewer.
 
+    python3 -m jev_arcade serve
     python3 -m jev_arcade watch --game tetris --player heuristic
     python3 -m jev_arcade bench --game all --player random,heuristic --episodes 10
     python3 -m jev_arcade bench --game 2048 --player jev --episodes 3 --max-turns 60
@@ -196,6 +197,11 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("analyse", help="calibration report over recorded replays")
     a.add_argument("--replays", default="replays")
 
+    s = sub.add_parser("serve", help="local web viewer, jev against a baseline side by side")
+    s.add_argument("--host", default="127.0.0.1",
+                   help="stays on this machine by default; this process holds your API key")
+    s.add_argument("--port", type=int, default=8765)
+
     b = sub.add_parser("bench", parents=[common], help="run many episodes and tabulate")
     b.add_argument("--episodes", type=int, default=5)
     b.add_argument("--seed-start", type=int, default=0)
@@ -203,6 +209,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+
+    if args.command == "serve":
+        from jev_arcade.web.server import serve
+
+        serve(args.host, args.port)
+        return 0
 
     if args.command == "analyse":
         from jev_arcade.analysis import analyse_replays, format_report

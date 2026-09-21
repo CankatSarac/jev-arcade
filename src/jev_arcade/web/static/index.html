@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jev-arcade</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --line: #30363d;
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --jev: #2f81f7;
+    --ref: #d29922;
+    --good: #3fb950;
+    --bad: #f85149;
+    --cell: #21262d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .5px; }
+  .sub { color: var(--dim); margin: 0 0 20px; font-size: 13px; }
+  .sub a { color: var(--jev); }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px; margin-bottom: 18px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; }
+  select, input {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px;
+  }
+  input[type=number] { width: 86px; }
+  button {
+    background: var(--jev); color: #fff; border: 0; border-radius: 6px;
+    padding: 8px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.stop { background: var(--bad); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .status { color: var(--dim); margin-bottom: 14px; min-height: 20px; font-size: 13px; }
+  .status.err { color: var(--bad); }
+
+  .boards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .boards { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .panel.left  { border-top: 3px solid var(--jev); }
+  .panel.right { border-top: 3px solid var(--ref); }
+  .phead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .pname { font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 13px; }
+  .left  .pname { color: var(--jev); }
+  .right .pname { color: var(--ref); }
+  .score { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .dead { color: var(--bad); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .board { display: grid; gap: 2px; margin: 0 auto 12px; }
+  .c { background: var(--cell); border-radius: 2px; aspect-ratio: 1; }
+  .c.f { background: var(--jev); }
+  .right .c.f { background: var(--ref); }
+  .c.head { background: var(--good); }
+  .c.body { background: #238636; }
+  .c.food { background: var(--bad); border-radius: 50%; }
+  .c.t {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #0d1117; aspect-ratio: 1;
+  }
+
+  .meta { font-size: 12px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .tag.jev { background: rgba(47,129,247,.18); color: var(--jev); }
+  .tag.heuristic { background: rgba(210,153,34,.18); color: var(--ref); }
+  .tag.random { background: rgba(139,148,158,.18); color: var(--dim); }
+
+  .bars { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .barrow { display: grid; grid-template-columns: 58px 1fr 44px; gap: 8px; align-items: center; margin-bottom: 4px; font-size: 11px; }
+  .track { background: var(--cell); border-radius: 3px; height: 8px; overflow: hidden; }
+  .fill { background: var(--jev); height: 100%; transition: width .15s; }
+  .fill.conf { background: var(--good); }
+  .num { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .label { color: var(--dim); }
+
+  .result { margin-top: 18px; padding: 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); display: none; }
+  .result.show { display: block; }
+  .result h3 { margin: 0 0 8px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>jev-arcade</h1>
+  <p class="sub">Two players, one seed, identical boards. Watch where a System One model keeps up and where it does not.</p>
+
+  <div class="controls">
+    <div class="field"><label for="game">game</label>
+      <select id="game"><option value="tetris">tetris</option><option value="snake">snake</option><option value="2048">2048</option></select></div>
+    <div class="field"><label for="left">left</label>
+      <select id="left"><option value="jev">jev</option><option value="heuristic">heuristic</option><option value="random">random</option></select></div>
+    <div class="field"><label for="right">right</label>
+      <select id="right"><option value="heuristic">heuristic</option><option value="jev">jev</option><option value="random">random</option></select></div>
+    <div class="field"><label for="seed">seed</label><input id="seed" type="number" value="0" min="0"></div>
+    <div class="field"><label for="turns">max turns</label><input id="turns" type="number" value="60" min="1"></div>
+    <div class="field"><label for="threshold">threshold</label><input id="threshold" type="number" value="0" min="0" max="1" step="0.1"></div>
+    <button id="go">start</button>
+  </div>
+
+  <div class="status" id="status">Ready.</div>
+
+  <div class="boards">
+    <div class="panel left" id="panel-left">
+      <div class="phead"><span class="pname" id="name-left">jev</span><span class="score" id="score-left">0</span></div>
+      <div class="board" id="board-left"></div>
+      <div class="meta" id="meta-left"></div>
+      <div class="bars" id="bars-left"></div>
+    </div>
+    <div class="panel right" id="panel-right">
+      <div class="phead"><span class="pname" id="name-right">heuristic</span><span class="score" id="score-right">0</span></div>
+      <div class="board" id="board-right"></div>
+      <div class="meta" id="meta-right"></div>
+      <div class="bars" id="bars-right"></div>
+    </div>
+  </div>
+
+  <div class="result" id="result"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let stream = null, game = "tetris";
+
+const TILE = {2:"#eee4da",4:"#ede0c8",8:"#f2b179",16:"#f59563",32:"#f67c5f",
+              64:"#f65e3b",128:"#edcf72",256:"#edcc61",512:"#edc850",
+              1024:"#edc53f",2048:"#edc22e"};
+
+// One renderer per game. Each returns nothing and writes into `el`.
+function drawBoard(el, side, state) {
+  if (!state) return;
+  if (game === "2048") {
+    el.style.gridTemplateColumns = `repeat(${state.size}, 1fr)`;
+    el.style.maxWidth = "260px";
+    el.innerHTML = state.grid.flat().map(v =>
+      `<div class="c t" style="background:${v ? (TILE[v] || "#3c3a32") : "var(--cell)"};
+        color:${v > 4 ? "#f9f6f2" : "#776e65"}">${v || ""}</div>`).join("");
+    return;
+  }
+  const rows = game === "tetris" ? state.board : state.grid;
+  const width = game === "tetris" ? state.width : state.size;
+  el.style.gridTemplateColumns = `repeat(${width}, 1fr)`;
+  el.style.maxWidth = game === "tetris" ? "200px" : "260px";
+  el.innerHTML = rows.map(row => [...row].map(ch => {
+    if (ch === "#") return '<div class="c f"></div>';
+    if (ch === "H") return '<div class="c head"></div>';
+    if (ch === "o") return '<div class="c body"></div>';
+    if (ch === "*") return '<div class="c food"></div>';
+    return '<div class="c"></div>';
+  }).join("")).join("");
+}
+
+function drawMeta(side, data) {
+  const last = data.last || {};
+  const bits = [];
+  if (last.move) bits.push(`<b>${last.move}</b>`);
+  if (last.source) bits.push(`<span class="tag ${last.source}">${last.source}</span>`);
+  if (last.latency_ms != null) bits.push(`${Math.round(last.latency_ms)} ms`);
+  if (last.danger != null) bits.push(`danger <b>${last.danger.toFixed(2)}</b>`);
+  if (last.health != null) bits.push(`health <b>${last.health.toFixed(2)}</b>`);
+  if (last.fallback_reason) bits.push(`<span class="tag heuristic">${last.fallback_reason}</span>`);
+  if (data.over) bits.push('<span class="dead">game over</span>');
+  $("meta-" + side).innerHTML = bits.join(" ");
+}
+
+function drawBars(side, data) {
+  const last = data.last || {};
+  const rows = [];
+  if (last.confidence != null) {
+    rows.push(`<div class="barrow"><span class="label">confidence</span>
+      <div class="track"><div class="fill conf" style="width:${last.confidence * 100}%"></div></div>
+      <span class="num">${last.confidence.toFixed(2)}</span></div>`);
+  }
+  for (const o of (last.top_options || [])) {
+    rows.push(`<div class="barrow"><span class="label">${o.move}</span>
+      <div class="track"><div class="fill" style="width:${o.p * 100}%"></div></div>
+      <span class="num">${o.p.toFixed(2)}</span></div>`);
+  }
+  $("bars-" + side).innerHTML = rows.join("");
+}
+
+function setStatus(text, isError) {
+  $("status").textContent = text;
+  $("status").className = "status" + (isError ? " err" : "");
+}
+
+function stop() {
+  if (stream) { stream.close(); stream = null; }
+  $("go").textContent = "start";
+  $("go").classList.remove("stop");
+}
+
+$("go").onclick = () => {
+  if (stream) { stop(); setStatus("Stopped."); return; }
+
+  game = $("game").value;
+  $("result").classList.remove("show");
+  for (const s of ["left", "right"]) {
+    $("meta-" + s).innerHTML = ""; $("bars-" + s).innerHTML = ""; $("score-" + s).textContent = "0";
+  }
+
+  const q = new URLSearchParams({
+    game, left: $("left").value, right: $("right").value,
+    seed: $("seed").value, max_turns: $("turns").value, threshold: $("threshold").value,
+  });
+  stream = new EventSource("/api/race?" + q);
+  $("go").textContent = "stop";
+  $("go").classList.add("stop");
+  setStatus("Starting...");
+
+  stream.onmessage = e => {
+    const f = JSON.parse(e.data);
+
+    if (f.type === "error") { setStatus(f.message, true); stop(); return; }
+
+    if (f.type === "start") {
+      $("name-left").textContent = f.left_name;
+      $("name-right").textContent = f.right_name;
+      drawBoard($("board-left"), "left", f.left.state);
+      drawBoard($("board-right"), "right", f.right.state);
+      setStatus(`${f.game}, seed ${f.seed}, up to ${f.max_turns} turns, threshold ${f.threshold}`);
+      return;
+    }
+
+    if (f.type === "frame") {
+      for (const s of ["left", "right"]) {
+        drawBoard($("board-" + s), s, f[s].state);
+        $("score-" + s).textContent = f[s].score;
+        drawMeta(s, f[s]);
+        drawBars(s, f[s]);
+      }
+      setStatus(`turn ${f.turn + 1}`);
+      return;
+    }
+
+    if (f.type === "done") {
+      stop();
+      const l = f.left_score, r = f.right_score;
+      const verdict = l > r ? "left wins" : r > l ? "right wins" : "tie";
+      let html = `<h3>${verdict}: ${l} against ${r}</h3>`;
+      if (f.left_over !== f.right_over) {
+        html += `<p class="sub" style="margin:0">` +
+          (f.left_over ? "Left topped out first." : "Right topped out first.") + `</p>`;
+      }
+      for (const [sideName, reasons] of Object.entries(f.fallbacks || {})) {
+        const total = Object.values(reasons).reduce((a, b) => a + b, 0);
+        if (total) {
+          const detail = Object.entries(reasons).map(([k, v]) => `${k} ${v}`).join(", ");
+          html += `<p class="sub" style="margin:4px 0 0">${sideName} fell back ${total} times: ${detail}</p>`;
+        }
+      }
+      $("result").innerHTML = html;
+      $("result").classList.add("show");
+      setStatus("Finished.");
+    }
+  };
+
+  stream.onerror = () => { setStatus("Connection to the server was lost.", true); stop(); };
+};
+
+fetch("/api/config").then(r => r.json()).then(c => {
+  if (!c.jev_available) {
+    setStatus(`${c.env_key} is not set, so jev is unavailable. Copy .env.example to .env and add your key. heuristic and random still work.`, true);
+  }
+}).catch(() => setStatus("Could not reach the server.", true));
+</script>
+</body>
+</html>
