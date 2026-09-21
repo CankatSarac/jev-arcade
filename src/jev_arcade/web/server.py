@@ -22,8 +22,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from jev_arcade.games.registry import available_games
 from jev_arcade.players.jev_client import ENV_KEY
-from jev_arcade.web.race import GAMES, PLAYER_KINDS, race_frames
+from jev_arcade.web.race import PLAYER_KINDS, race_frames
 
 __all__ = ["serve", "RaceHandler", "MAX_TURNS_LIMIT"]
 
@@ -85,7 +86,7 @@ class RaceHandler(BaseHTTPRequestHandler):
 
         self._json(
             {
-                "games": list(GAMES),
+                "games": list(available_games()),
                 "players": list(PLAYER_KINDS),
                 # Reports only whether a key is present. Never its value.
                 "jev_available": bool(os.environ.get(ENV_KEY, "").strip()),
@@ -102,7 +103,11 @@ class RaceHandler(BaseHTTPRequestHandler):
         game = first("game") or "tetris"
         left = first("left") or "jev"
         right = first("right") or "heuristic"
-        if game not in GAMES or left not in PLAYER_KINDS or right not in PLAYER_KINDS:
+        if (
+            game not in available_games()
+            or left not in PLAYER_KINDS
+            or right not in PLAYER_KINDS
+        ):
             return self._json({"error": "unknown game or player"}, 400)
 
         seed = int(_clamp(first("seed"), 0, 10**6, 0))

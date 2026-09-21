@@ -17,9 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from jev_arcade.games.snake import Snake
-from jev_arcade.games.tetris import Tetris
-from jev_arcade.games.twenty48 import Twenty48
+from jev_arcade.games.registry import available_games, is_gym_game, make_game
 from jev_arcade.harness.recorder import write_jsonl
 from jev_arcade.harness.render import clear_screen, render
 from jev_arcade.harness.runner import run_episode
@@ -33,7 +31,6 @@ __all__ = ["main"]
 
 logger = logging.getLogger("jev_arcade")
 
-GAMES = {"tetris": Tetris, "snake": Snake, "2048": Twenty48}
 PLAYERS = ("random", "heuristic", "jev")
 
 # Jev spends one API call per turn, so the cap is a budget as much as a rule.
@@ -54,21 +51,33 @@ def load_dotenv(path: str | Path = ".env") -> None:
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
+def baseline_player(game_name: str, seed: int) -> Any:
+    """The strongest non Jev player for a game.
+
+    Gym backed environments have no hand written heuristic, so random stands in
+    as their baseline and as Jev's fallback. That is stated rather than hidden,
+    because it makes those comparisons weaker than the core three.
+    """
+    if is_gym_game(game_name):
+        return RandomPlayer(seed)
+    return HeuristicPlayer(game_name)
+
+
 def build_player(kind: str, game_name: str, seed: int, threshold: float) -> Any:
     if kind == "random":
         return RandomPlayer(seed)
     if kind == "heuristic":
-        return HeuristicPlayer(game_name)
+        return baseline_player(game_name, seed)
     if kind == "jev":
         client = JevClient.from_env()
-        return JevPlayer(game_name, client, HeuristicPlayer(game_name), threshold)
+        return JevPlayer(game_name, client, baseline_player(game_name, seed), threshold)
     raise ValueError(f"unknown player {kind!r}")
 
 
 def watch(game_name: str, player_kind: str, seed: int, max_turns: int,
           threshold: float, delay: float) -> Episode:
     """Play one episode and draw every frame."""
-    game = GAMES[game_name]()
+    game = make_game(game_name)
     player = build_player(player_kind, game_name, seed, threshold)
 
     def on_step(g: Any, record: Any) -> None:
@@ -103,7 +112,7 @@ def bench(game_names: list[str], player_kinds: list[str], episodes: int,
                     "threshold": threshold if kind == "jev" else None,
                 }
                 episode = run_episode(
-                    GAMES[game_name](), player, seed, max_turns=max_turns, meta=meta
+                    make_game(game_name), player, seed, max_turns=max_turns, meta=meta
                 )
                 if kind == "jev":
                     episode.meta["fallback_reasons"] = dict(player.fallback_reasons)
@@ -222,10 +231,13 @@ def main(argv: list[str] | None = None) -> int:
         print(format_report(analyse_replays(args.replays)))
         return 0
 
-    game_names = list(GAMES) if args.game == "all" else args.game.split(",")
+    known = available_games()
+    game_names = list(known) if args.game == "all" else args.game.split(",")
     for name in game_names:
-        if name not in GAMES:
-            parser.error(f"unknown game {name!r}. Choose from {', '.join(GAMES)} or all.")
+        if name not in known:
+            parser.error(
+                f"unknown game {name!r}. Choose from {', '.join(known)} or all."
+            )
 
     try:
         if args.command == "watch":

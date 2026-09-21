@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
+from jev_arcade.games.registry import CORE_GAMES
 from jev_arcade.web.race import race_frames
 from jev_arcade.web.server import MAX_TURNS_LIMIT, RaceHandler
 
@@ -98,7 +99,9 @@ def test_page_is_served(server):
 def test_config_lists_games_and_players(server):
     _, body = get(server, "/api/config")
     config = json.loads(body)
-    assert set(config["games"]) == {"tetris", "snake", "2048"}
+    # Core games are always present. Gym backed ones appear only when
+    # gymnasium is installed, so the check is a superset rather than equality.
+    assert set(config["games"]) >= set(CORE_GAMES)
     assert set(config["players"]) == {"jev", "heuristic", "random"}
     assert config["max_turns_limit"] == MAX_TURNS_LIMIT
 

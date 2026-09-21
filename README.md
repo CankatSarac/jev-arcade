@@ -119,6 +119,61 @@ tasks those are.
 Be clear about what the Tetris 2333 is, though. At 100% fallback that is the heuristic's
 score, not Jev's. Jev contributed the decision to stay out of the way.
 
+### More games, one adapter: Gymnasium
+
+Adding four standard RL environments took a single adapter file rather than four
+engines. They are an optional extra, so a plain clone still runs with nothing installed.
+
+```bash
+pip install "jev-arcade[gym]"
+```
+
+| game | environment | actions |
+| --- | --- | --- |
+| frozenlake | FrozenLake-v1 | 4 |
+| cliffwalking | CliffWalking-v1 | 4 |
+| taxi | Taxi-v4 | 6, masked per step |
+| blackjack | Blackjack-v1 | 2 |
+
+Taxi publishes an `action_mask` every step, so the "an illegal move cannot be expressed"
+property carries straight over: only unmasked actions ever reach the `criteria` map.
+
+A raw Gymnasium observation is an integer, which tells a model nothing, so every
+environment has a decoder that turns it back into a readable board. FrozenLake state, for
+example, arrives as `PFFF / FHFH / FFFH / HFFG` with `P` marking where you stand.
+
+Three seeded episodes, 40 turns each:
+
+| game | random | jev |
+| --- | --- | --- |
+| cliffwalking | -601 | **-22** |
+| frozenlake | 0 | 0 |
+| taxi | -40 | -40 |
+| blackjack | -0 | -1 |
+
+**CliffWalking is the clearest win in the whole project.** Each step costs 1 and falling
+off the cliff costs 100. Jev scored -22, meaning it walked the entire cliff edge without
+falling once. Random scored -601.
+
+**FrozenLake shows the same weakness as Tetris.** Jev dies in 2 to 4 turns while random
+survives 10 to 26. Look at the map: stepping straight down from the start reaches the
+hole on the bottom row. Getting to the goal needs a route planned around holes, which is
+lookahead, not a single step judgement.
+
+The pattern now holds across seven games. **Where the right move is visible from the
+current position, Jev is strong. Where it needs a plan several moves deep, it is not.**
+
+Caveats specific to these four, since they are weaker evidence than the core three:
+
+* **No hand written heuristic exists for them**, so random is both the baseline and Jev's
+  fallback. That is a much lower bar than the Tetris or Snake heuristics.
+* **FrozenLake defaults to `is_slippery=True`**, so an action only moves you the intended
+  way about a third of the time. That makes it a test of planning under stochasticity
+  rather than of single step judgement.
+* **40 turns is too short for Taxi.** Both players simply ran out the clock at -1 per
+  step, so the tie means neither finished, not that they played alike.
+* **Three Blackjack episodes is pure noise.** The -1 against -0 says nothing.
+
 ### What these numbers do not show
 
 Stated plainly, because a benchmark that oversells itself is worth less than no benchmark.
@@ -198,6 +253,8 @@ src/jev_arcade/
   players/      random_player  heuristic_player  jev_player  jev_client  mock_player
   harness/      runner  recorder (JSONL replays)  render (ANSI terminal)
   analysis.py   calibration report over replays, no API calls
+  games/registry.py  the one place that knows which games exist
+  games/gym_adapter.py  Gymnasium toy_text games, optional extra
   web/          stdlib SSE server and the race viewer page
   bench.py      watch, bench, analyse and serve commands
 ```

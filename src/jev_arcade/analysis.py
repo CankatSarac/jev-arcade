@@ -25,16 +25,13 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from jev_arcade.games.snake import Snake
-from jev_arcade.games.tetris import Tetris
-from jev_arcade.games.twenty48 import Twenty48
+from jev_arcade.games.registry import available_games, is_gym_game, make_game
 from jev_arcade.harness.recorder import read_jsonl
 from jev_arcade.players.heuristic_player import HeuristicPlayer
+from jev_arcade.players.random_player import RandomPlayer
 from jev_arcade.types import Episode
 
 __all__ = ["analyse_replays", "collect_moves", "format_report", "BUCKETS"]
-
-GAMES = {"tetris": Tetris, "snake": Snake, "2048": Twenty48}
 
 # Chosen to match the distribution reported by bench, not tuned after the fact.
 BUCKETS: list[tuple[str, float, float]] = [
@@ -52,11 +49,15 @@ def collect_moves(episode: Episode) -> list[dict[str, Any]]:
     so scoring them against the heuristic would compare it with itself. Turns
     with a single legal move were never sent to the API at all.
     """
-    if episode.game not in GAMES:
+    if episode.game not in available_games():
         return []
-    game = GAMES[episode.game]()
+    game = make_game(episode.game)
     game.reset(episode.seed)
-    reference = HeuristicPlayer(episode.game)
+    # Gym backed games have no heuristic, so agreement is measured against
+    # random there, which is a far weaker reference. Flagged in the report.
+    reference = (
+        RandomPlayer(episode.seed) if is_gym_game(episode.game) else HeuristicPlayer(episode.game)
+    )
     rows: list[dict[str, Any]] = []
 
     for record in episode.moves:

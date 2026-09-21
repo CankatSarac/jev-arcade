@@ -22,8 +22,15 @@ jobs:
       - name: Install dev tools
         run: python -m pip install --upgrade pip pytest ruff
 
-      # Runs fully offline. No API key is configured for CI on purpose.
-      - name: Run tests
+      # A plain clone must be green with nothing installed. The gym backed
+      # games skip themselves when gymnasium is absent.
+      - name: Run tests without the gym extra
+        run: python -m pytest tests/ -q
+
+      - name: Install the gym extra
+        run: python -m pip install gymnasium
+
+      - name: Run tests with the gym extra
         run: python -m pytest tests/ -q
 
       - name: Lint

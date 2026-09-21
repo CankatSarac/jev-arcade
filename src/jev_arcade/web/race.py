@@ -15,32 +15,32 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-from jev_arcade.games.snake import Snake
-from jev_arcade.games.tetris import Tetris
-from jev_arcade.games.twenty48 import Twenty48
+from jev_arcade.games.registry import available_games, is_gym_game, make_game
 from jev_arcade.players.heuristic_player import HeuristicPlayer
 from jev_arcade.players.jev_client import JevAuthError, JevClient, JevError
 from jev_arcade.players.jev_player import JevPlayer
 from jev_arcade.players.random_player import RandomPlayer
 
-__all__ = ["GAMES", "PLAYER_KINDS", "build_player", "race_frames"]
+__all__ = ["PLAYER_KINDS", "build_player", "race_frames"]
 
-GAMES = {"tetris": Tetris, "snake": Snake, "2048": Twenty48}
 PLAYER_KINDS = ("jev", "heuristic", "random")
 
 # Top N options to show as probability bars in the browser.
 TOP_OPTIONS = 5
 
 
+def _baseline(game_name: str, seed: int) -> Any:
+    """Gym backed games have no hand written heuristic, so random stands in."""
+    return RandomPlayer(seed) if is_gym_game(game_name) else HeuristicPlayer(game_name)
+
+
 def build_player(kind: str, game_name: str, seed: int, threshold: float) -> Any:
     if kind == "heuristic":
-        return HeuristicPlayer(game_name)
+        return _baseline(game_name, seed)
     if kind == "random":
         return RandomPlayer(seed)
     if kind == "jev":
-        return JevPlayer(
-            game_name, JevClient.from_env(), HeuristicPlayer(game_name), threshold
-        )
+        return JevPlayer(game_name, JevClient.from_env(), _baseline(game_name, seed), threshold)
     raise ValueError(f"unknown player {kind!r}")
 
 
@@ -86,13 +86,13 @@ def race_frames(
     threshold: float = 0.0,
 ) -> Iterator[dict[str, Any]]:
     """Yield one frame per turn, plus an opening frame and a closing summary."""
-    if game_name not in GAMES:
+    if game_name not in available_games():
         raise ValueError(f"unknown game {game_name!r}")
     for kind in (left_kind, right_kind):
         if kind not in PLAYER_KINDS:
             raise ValueError(f"unknown player {kind!r}")
 
-    left_game, right_game = GAMES[game_name](), GAMES[game_name]()
+    left_game, right_game = make_game(game_name), make_game(game_name)
     left_game.reset(seed)
     right_game.reset(seed)
     try:

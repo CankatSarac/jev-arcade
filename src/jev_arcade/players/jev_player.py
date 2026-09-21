@@ -64,6 +64,55 @@ QUESTION_TEXT: dict[str, dict[str, Any]] = {
             ],
         },
     },
+    "frozenlake": {
+        "move": (
+            "Choose which way to step. Prefer the step that gets closer to the goal "
+            "tile G without moving onto a hole tile H, which ends the episode."
+        ),
+        "danger": "The next step would move onto a hole tile H.",
+        "health": {
+            "instructions": "Rate how close you are to reaching the goal tile G.",
+            "criteria": ["Far from the goal", "Part of the way there", "Very close to the goal"],
+        },
+    },
+    "cliffwalking": {
+        "move": (
+            "Choose which way to step. Prefer the step that gets closer to the goal "
+            "tile G without walking onto a cliff tile C."
+        ),
+        "danger": "The next step would walk onto a cliff tile C.",
+        "health": {
+            "instructions": "Rate how close you are to reaching the goal tile G.",
+            "criteria": ["Far from the goal", "Part of the way there", "Very close to the goal"],
+        },
+    },
+    "taxi": {
+        "move": (
+            "Choose the next action. If the passenger is not on board, drive toward "
+            "their pickup point and pick them up there. If they are on board, drive "
+            "to the destination and drop them off there."
+        ),
+        "danger": "A pickup or dropoff attempted here would be at the wrong place.",
+        "health": {
+            "instructions": "Rate progress through the trip.",
+            "criteria": [
+                "Passenger not collected yet",
+                "Passenger on board and on the way",
+                "At the destination, ready to drop off",
+            ],
+        },
+    },
+    "blackjack": {
+        "move": (
+            "Choose whether to draw another card or stop. Prefer the action more "
+            "likely to beat the dealer's showing card without going over 21."
+        ),
+        "danger": "Drawing another card would very likely go over 21.",
+        "health": {
+            "instructions": "Rate the strength of the current hand.",
+            "criteria": ["Weak, likely to lose", "Playable", "Strong, likely to win"],
+        },
+    },
     "2048": {
         "move": (
             "Choose which way to slide the tiles. Prefer the slide that merges the "
