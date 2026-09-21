@@ -193,6 +193,9 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--seed", type=int, default=0)
     w.add_argument("--delay", type=float, default=0.05)
 
+    a = sub.add_parser("analyse", help="calibration report over recorded replays")
+    a.add_argument("--replays", default="replays")
+
     b = sub.add_parser("bench", parents=[common], help="run many episodes and tabulate")
     b.add_argument("--episodes", type=int, default=5)
     b.add_argument("--seed-start", type=int, default=0)
@@ -200,6 +203,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+
+    if args.command == "analyse":
+        from jev_arcade.analysis import analyse_replays, format_report
+
+        print(format_report(analyse_replays(args.replays)))
+        return 0
 
     game_names = list(GAMES) if args.game == "all" else args.game.split(",")
     for name in game_names:
