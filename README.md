@@ -44,7 +44,65 @@ Two numbers, not one.
 
 ## Results
 
-<!--RESULTS-->
+Three seeded episodes per cell, 60 turns per episode, run 2026-09-21 against
+`jev-1.13.0`. Confidence threshold 0, meaning every Jev answer was acted on and nothing
+fell back to the heuristic.
+
+| game | random | heuristic | jev | jev as share of heuristic |
+| --- | --- | --- | --- | --- |
+| snake | 0 | 80 | 70 | 88% |
+| 2048 | 447 | 497 | 484 | 97% |
+| tetris | 0 | 2333 | 167 | 7% |
+
+**The pattern is not about game difficulty. It is about action space size and how far
+ahead you have to look.**
+
+Snake and 2048 offer at most four moves and reward local reasoning, and there Jev lands
+close to a tuned heuristic. Tetris offers around 34 placements per piece and rewards
+planning several pieces ahead, and there Jev falls a long way short. That is what a System
+One model should look like: fast intuitive judgement, not deliberate search.
+
+**Jev clearly beats random on Tetris even so.** It scored 167 against random's 0, and
+survived a mean of 36 pieces against random's 25. That is worth stating plainly because
+lmgame-Bench found LLM scores on Tetris sitting close to random. A System One model does
+better than that published LLM baseline on the game LLMs fail at, at about 500 ms and a
+fraction of the cost per move.
+
+**Jev is usually unsure, and was acted on anyway.**
+
+| confidence bucket | moves | share |
+| --- | --- | --- |
+| 0.0 to 0.5 | 338 | 74% |
+| 0.5 to 0.8 | 58 | 13% |
+| 0.8 to 1.0 | 61 | 13% |
+
+Three quarters of answers came back below 0.5 confidence. Often that is correct rather
+than confused: on a near empty 2048 board every slide really is near equivalent, and
+TypeSafe documents that several acceptable alternatives will spread probability. Since the
+threshold was 0, these scores show Jev at its least selective. Running with
+`--threshold 0.5` so it defers when unsure is the obvious next experiment.
+
+### What these numbers do not show
+
+Stated plainly, because a benchmark that oversells itself is worth less than no benchmark.
+
+* **Three seeds per cell is a small sample.** Enough to see a 300x gap on Tetris, not
+  enough to trust the 13 point gap on 2048.
+* **60 turns barely stretches 2048.** Random scores 447 and the heuristic 497, so the game
+  is only separating players by about 11% at this length. The Jev number there is weak
+  evidence either way.
+* **The Tetris heuristic never died.** It hit the 60 turn cap every time, so 2333 is a
+  floor on its skill, not a measurement of it.
+* **Calibration is not yet measured.** The confidence distribution is reported, but
+  whether accuracy actually rises with confidence needs the per move comparison against
+  the heuristic's choice. The replays in `replays/` hold everything needed for it.
+
+Reproduce with:
+
+```bash
+PYTHONPATH=src python3 -m jev_arcade bench --game all --player all --episodes 3 --max-turns 60
+```
+
 
 ## How a move works
 
