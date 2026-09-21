@@ -161,3 +161,32 @@ def test_threshold_is_clamped_to_zero_and_one(server):
     with urllib.request.urlopen(url, timeout=30) as response:
         first = json.loads(next(line for line in response if line.startswith(b"data: "))[6:])
     assert first["threshold"] == 1.0
+
+
+def test_page_does_not_hardcode_the_game_list(server):
+    """The dropdown must come from /api/config.
+
+    It was hardcoded to the three core games at first, so the gym backed ones
+    could never appear in the browser no matter what the server registered.
+    """
+    _, body = get(server, "/")
+    assert '<select id="game"></select>' in body
+    assert "/api/config" in body
+    for name in ("tetris", "snake", "2048"):
+        assert f'<option value="{name}">' not in body
+
+
+def test_page_can_render_every_registered_game(server):
+    """Each game needs either a glyph map, a tile view or a fact view.
+
+    A game the page cannot draw would show an empty box with no error.
+    """
+    _, body = get(server, "/")
+    _, config = get(server, "/api/config")
+    drawable = {"tetris", "snake", "2048"}  # bespoke renderers
+    for name in json.loads(config)["games"]:
+        assert (
+            name in drawable
+            or f"  {name}: {{" in body  # entry in GLYPHS
+            or f"  {name}: s =>" in body  # entry in FACTS
+        ), f"the page has no way to draw {name}"

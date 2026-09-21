@@ -108,8 +108,10 @@ def race_frames(
         "seed": seed,
         "max_turns": max_turns,
         "threshold": threshold,
-        "left_name": left_kind,
-        "right_name": right_kind,
+        # The real player, not the requested kind. Asking for "heuristic" on a
+        # gym backed game actually gets random, and the label must say so.
+        "left_name": getattr(left_player, "name", left_kind),
+        "right_name": getattr(right_player, "name", right_kind),
         "left": _side(left_game),
         "right": _side(right_game),
     }

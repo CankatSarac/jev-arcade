@@ -101,7 +101,7 @@
 
   <div class="controls">
     <div class="field"><label for="game">game</label>
-      <select id="game"><option value="tetris">tetris</option><option value="snake">snake</option><option value="2048">2048</option></select></div>
+      <select id="game"></select></div>
     <div class="field"><label for="left">left</label>
       <select id="left"><option value="jev">jev</option><option value="heuristic">heuristic</option><option value="random">random</option></select></div>
     <div class="field"><label for="right">right</label>
@@ -140,9 +140,62 @@ const TILE = {2:"#eee4da",4:"#ede0c8",8:"#f2b179",16:"#f59563",32:"#f67c5f",
               64:"#f65e3b",128:"#edcf72",256:"#edcc61",512:"#edc850",
               1024:"#edc53f",2048:"#edc22e"};
 
+const EMPTY = '<div class="c"></div>';
+const box = (bg, label, fg) =>
+  `<div class="c t" style="background:${bg};color:${fg || "#0d1117"};font-size:11px">${label || ""}</div>`;
+
+// One glyph map per game. The same character means different things in
+// different games: H is a snake head here and a lethal hole there.
+const GLYPHS = {
+  tetris: { "#": () => '<div class="c f"></div>' },
+  snake: {
+    H: () => '<div class="c head"></div>',
+    o: () => '<div class="c body"></div>',
+    "*": () => '<div class="c food"></div>',
+  },
+  frozenlake: {
+    P: () => box("#2f81f7", "P", "#fff"),
+    S: () => box("#30363d", "S", "#8b949e"),
+    F: () => box("#1f6feb22", ""),
+    H: () => box("#f85149", "H", "#fff"),
+    G: () => box("#3fb950", "G", "#0d1117"),
+  },
+  cliffwalking: {
+    P: () => box("#2f81f7", "P", "#fff"),
+    C: () => box("#f85149", "", "#fff"),
+    G: () => box("#3fb950", "G", "#0d1117"),
+  },
+};
+
+// Games with no board at all. Show the facts that decide the move instead.
+const FACTS = {
+  taxi: s => [
+    ["taxi at", `row ${s.taxi.row}, col ${s.taxi.col}`],
+    ["passenger", s.passenger_location],
+    ["destination", s.destination],
+    ["on board", s.passenger_on_board ? "yes" : "no"],
+  ],
+  blackjack: s => [
+    ["your total", s.your_total],
+    ["dealer shows", s.dealer_showing],
+    ["usable ace", s.you_hold_a_usable_ace ? "yes" : "no"],
+  ],
+};
+
 // One renderer per game. Each returns nothing and writes into `el`.
 function drawBoard(el, side, state) {
   if (!state) return;
+
+  if (FACTS[game]) {
+    el.style.display = "block";
+    el.style.maxWidth = "320px";
+    el.innerHTML = FACTS[game](state).map(([k, v]) =>
+      `<div class="barrow" style="grid-template-columns:110px 1fr">
+         <span class="label">${k}</span><b>${v}</b></div>`).join("");
+    return;
+  }
+  el.style.display = "grid";
+
   if (game === "2048") {
     el.style.gridTemplateColumns = `repeat(${state.size}, 1fr)`;
     el.style.maxWidth = "260px";
@@ -151,17 +204,16 @@ function drawBoard(el, side, state) {
         color:${v > 4 ? "#f9f6f2" : "#776e65"}">${v || ""}</div>`).join("");
     return;
   }
+
   const rows = game === "tetris" ? state.board : state.grid;
-  const width = game === "tetris" ? state.width : state.size;
+  if (!rows) { el.innerHTML = ""; return; }
+  const width = rows[0].length;
+  const glyphs = GLYPHS[game] || {};
   el.style.gridTemplateColumns = `repeat(${width}, 1fr)`;
-  el.style.maxWidth = game === "tetris" ? "200px" : "260px";
-  el.innerHTML = rows.map(row => [...row].map(ch => {
-    if (ch === "#") return '<div class="c f"></div>';
-    if (ch === "H") return '<div class="c head"></div>';
-    if (ch === "o") return '<div class="c body"></div>';
-    if (ch === "*") return '<div class="c food"></div>';
-    return '<div class="c"></div>';
-  }).join("")).join("");
+  el.style.maxWidth = width > 10 ? "320px" : "220px";
+  el.innerHTML = rows.map(row =>
+    [...row].map(ch => (glyphs[ch] ? glyphs[ch]() : EMPTY)).join("")
+  ).join("");
 }
 
 function drawMeta(side, data) {
@@ -273,6 +325,10 @@ $("go").onclick = () => {
 };
 
 fetch("/api/config").then(r => r.json()).then(c => {
+  const select = $("game");
+  select.innerHTML = c.games.map(g => `<option value="${g}">${g}</option>`).join("");
+  game = select.value;
+  $("turns").max = c.max_turns_limit;
   if (!c.jev_available) {
     setStatus(`${c.env_key} is not set, so jev is unavailable. Copy .env.example to .env and add your key. heuristic and random still work.`, true);
   }
